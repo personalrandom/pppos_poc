@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include "lwrb.h"
+#include "lwip/apps/lwiperf.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -420,6 +421,17 @@ void StartDefaultTask(void const * argument)
   /* init code for LWIP */
   MX_LWIP_Init();
   /* USER CODE BEGIN 5 */
+
+  printf("Starting lwip server ...\n");
+
+  LOCK_TCPIP_CORE();
+  lwiperf_start_tcp_server_default(NULL, NULL);
+  //  Start second server at port 5002
+  lwiperf_start_tcp_server(IP_ADDR_ANY, 5002,
+                                  NULL, NULL);
+
+  UNLOCK_TCPIP_CORE();
+
   /* Infinite loop */
   for(;;)
   {
