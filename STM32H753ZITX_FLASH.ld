@@ -166,6 +166,22 @@ SECTIONS
     . = ALIGN(8);
   } >RAM_D1
 
+  /* USART DMA buffer in D2 RAM */
+  .UsartDma (NOLOAD) :
+  {
+      . = ALIGN(4);
+      KEEP(*(.UsartDma))
+      . = ALIGN(4);
+  } > RAM_D2
+
+  /* USART RX buffer in DTCM RAM */
+  .RxUsart2Dtcm 0x20002000 (NOLOAD) :
+  {
+      . = ALIGN(4);
+      KEEP(*(.RxUsart2Dtcm))
+      . = ALIGN(4);
+  } > DTCMRAM
+  
   /* Remove information from the standard libraries */
   /DISCARD/ :
   {
