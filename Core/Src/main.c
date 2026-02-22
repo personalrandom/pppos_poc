@@ -147,7 +147,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadStaticDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 1024, defaultTaskBuffer, &defaultTaskControlBlock);
+  osThreadStaticDef(defaultTask, StartDefaultTask, osPriorityBelowNormal, 0, 1024, defaultTaskBuffer, &defaultTaskControlBlock);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -185,16 +185,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t len;
   while (1)
   {
-    if((len = lwrb_get_linear_block_read_length(&usart_tx_rb)) > 0)
-    {
-      /* There is data in ring buffer */
-      usart_Send(lwrb_get_linear_block_read_address(&usart_tx_rb), len);
-      /* move read buffer */
-      lwrb_skip(&usart_tx_rb, len);
-    }
 
     /* USER CODE END WHILE */
 
@@ -433,8 +425,16 @@ void StartDefaultTask(void const * argument)
   UNLOCK_TCPIP_CORE();
 
   /* Infinite loop */
+  uint32_t len;
   for(;;)
   {
+    if((len = lwrb_get_linear_block_read_length(&usart_tx_rb)) > 0)
+    {
+      /* There is data in ring buffer */
+      usart_Send(lwrb_get_linear_block_read_address(&usart_tx_rb), len);
+      /* move read buffer */
+      lwrb_skip(&usart_tx_rb, len);
+    }
     osDelay(1);
   }
   /* USER CODE END 5 */
@@ -473,6 +473,25 @@ void MPU_Config(void)
   MPU_InitStruct.SubRegionDisable = 0x0;
   MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL1;
   MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /** Initializes and configures the Region and the memory to be protected
+  */
+  MPU_InitStruct.Number = MPU_REGION_NUMBER2;
+  MPU_InitStruct.BaseAddress = 0x30020000;
+  MPU_InitStruct.Size = MPU_REGION_SIZE_128KB;
+  MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /** Initializes and configures the Region and the memory to be protected
+  */
+  MPU_InitStruct.Number = MPU_REGION_NUMBER3;
+  MPU_InitStruct.BaseAddress = 0x30040000;
+  MPU_InitStruct.Size = MPU_REGION_SIZE_512B;
+  MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+  MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
 
   HAL_MPU_ConfigRegion(&MPU_InitStruct);
   /* Enables the MPU */

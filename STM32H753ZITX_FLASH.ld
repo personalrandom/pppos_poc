@@ -167,12 +167,24 @@ SECTIONS
   } >RAM_D1
 
   /* USART DMA buffer in D2 RAM */
-  .UsartDma (NOLOAD) :
+  .UsartDma 0x30000000 (NOLOAD) :
   {
       . = ALIGN(4);
       KEEP(*(.UsartDma))
       . = ALIGN(4);
   } > RAM_D2
+
+  .lwip_sec (NOLOAD) :
+  {
+    . = ABSOLUTE(0x30040000);
+    *(.RxDecripSection) 
+    
+    . = ABSOLUTE(0x30040100);
+    *(.TxDecripSection)
+    
+    . = ABSOLUTE(0x30040200);
+    *(.Rx_PoolSection)  
+  } >RAM_D2
 
   /* USART RX buffer in DTCM RAM */
   .RxUsart2Dtcm 0x20002000 (NOLOAD) :
