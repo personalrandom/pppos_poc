@@ -71,7 +71,10 @@ static void MX_TIM17_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
-
+uint32_t sys_jiffies(void)
+{
+    return (uint32_t)(xTaskGetTickCount());
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/

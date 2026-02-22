@@ -56,7 +56,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+uint32_t sys_jiffies(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
