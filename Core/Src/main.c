@@ -25,7 +25,7 @@
 /* USER CODE BEGIN Includes */
 #include "usart.h"
 #include "lwrb.h"
-#include "lwip/apps/lwiperf.h"
+#include "lwip/sockets.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -75,6 +75,7 @@ uint32_t sys_jiffies(void)
 {
     return (uint32_t)(xTaskGetTickCount());
 }
+void echo_application_thread(void const * argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -396,6 +397,76 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 static char acRuntimeStats[256];
 static int iRuntimeStatsDivisor;
+osThreadId echo_appHandle;
+#define RECV_BUF_SIZE 16192
+char recv_buf[RECV_BUF_SIZE];
+
+void echo_application_thread(void const * argument)
+{
+  /* USER CODE BEGIN echo_application_thread */
+  /* Infinite loop */
+  int sock;
+  u16_t echo_port = 7;
+  struct sockaddr_in client_addr;
+  socklen_t addr_len;
+  struct sockaddr_in address;
+
+
+  printf("Starting echo server ...\n\r");
+
+  memset(&address, 0, sizeof(address));
+
+  if ((sock = lwip_socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+  {
+    printf("Socket creation failed\n\r");
+    return;
+  }
+
+  address.sin_family = AF_INET;
+  address.sin_port = htons(echo_port);
+  address.sin_addr.s_addr = INADDR_ANY;
+
+  if (lwip_bind(sock, (struct sockaddr *)&address, sizeof (address)) < 0)
+  {        
+    printf("Bind failed\n\r");
+    return;
+  }
+
+  addr_len = sizeof(client_addr);
+
+  printf("UDP Echo server started on port %d\n\r", echo_port);
+
+  while (1)
+  {
+    int len = recvfrom(sock,
+                       recv_buf,
+                       RECV_BUF_SIZE,
+                       0,
+                       (struct sockaddr *)&client_addr,
+                       &addr_len);
+
+    for (int i = 0; i < len; i++)
+    {
+      if(recv_buf[i] != (i % 256))
+      {
+        Error_Handler();
+      }
+    }
+    printf("Received and verified %d Bytes\n", len);
+    if (len > 0)
+    {
+      /* Echo back the received data */
+      sendto(sock,
+             recv_buf,
+             len,
+             0,
+             (struct sockaddr *)&client_addr,
+             addr_len);
+    printf("Sent back all data %d Bytes\n", len);
+    }
+  }
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -411,15 +482,9 @@ void StartDefaultTask(void const * argument)
   MX_LWIP_Init();
   /* USER CODE BEGIN 5 */
 
-  printf("Starting lwip server ...\n");
-
-  LOCK_TCPIP_CORE();
-  lwiperf_start_tcp_server_default(NULL, NULL);
-  //  Start second server at port 5002
-  lwiperf_start_tcp_server(IP_ADDR_ANY, 5002,
-                                  NULL, NULL);
-
-  UNLOCK_TCPIP_CORE();
+  /* definition and creation of echo_app */
+  osThreadDef(echo_app, echo_application_thread, osPriorityNormal, 0, 512);
+  echo_appHandle = osThreadCreate(osThread(echo_app), NULL);
 
   /* Infinite loop */
   for(;;)
@@ -431,8 +496,7 @@ void StartDefaultTask(void const * argument)
     {
       vTaskGetRunTimeStats(acRuntimeStats);
       printf("%s\n", acRuntimeStats);
-      printf("\n");
-
+      stats_display();
       iRuntimeStatsDivisor=0;
 
     }
