@@ -99,6 +99,8 @@
 #define RECV_BUFSIZE_DEFAULT 2000000000
 /*----- Default Value for PPP_SUPPORT: 0 ---*/
 #define PPP_SUPPORT 1
+/*----- Default Value for PPP_INPROC_IRQ_SAFE: 0 ---*/
+#define PPP_INPROC_IRQ_SAFE 1
 /*----- Default Value for LWIP_PERF: 0 ---*/
 #define LWIP_PERF 1
 /*----- Value in opt.h for LWIP_STATS: 1 -----*/

@@ -79,9 +79,7 @@ uint32_t sys_jiffies(void)
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static uint8_t usart_tx_rb_data[(USART_RX_BUFF * 2)];
-static lwrb_t usart_tx_rb;
-static void UartRxCbWrb(uint8_t *rx_buffer, size_t rx_len);
+
 /* USER CODE END 0 */
 
 /**
@@ -112,8 +110,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  /* Initialize ringbuff */
-  lwrb_init(&usart_tx_rb, usart_tx_rb_data, sizeof(usart_tx_rb_data));
+  usart_preInit();
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -331,8 +328,7 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
-  /* Start UART RX/TX DMA driver and pass CB to it */
-  usart_Open(UartRxCbWrb);
+
   /* USER CODE END USART2_Init 2 */
 
 }
@@ -348,10 +344,10 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
   /* DMA1_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 
 }
@@ -398,10 +394,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static void UartRxCbWrb(uint8_t *rx_buffer, size_t rx_len)
-{
-  lwrb_write(&usart_tx_rb, rx_buffer, rx_len);  /* Write data to receive buffer */;
-}
+static char acRuntimeStats[256];
+static int iRuntimeStatsDivisor;
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -428,17 +422,21 @@ void StartDefaultTask(void const * argument)
   UNLOCK_TCPIP_CORE();
 
   /* Infinite loop */
-  uint32_t len;
   for(;;)
   {
-    if((len = lwrb_get_linear_block_read_length(&usart_tx_rb)) > 0)
+    osDelay(2000);
+
+    if (++iRuntimeStatsDivisor > 6)
+    // if (0)
     {
-      /* There is data in ring buffer */
-      usart_Send(lwrb_get_linear_block_read_address(&usart_tx_rb), len);
-      /* move read buffer */
-      lwrb_skip(&usart_tx_rb, len);
+      vTaskGetRunTimeStats(acRuntimeStats);
+      printf("%s\n", acRuntimeStats);
+      printf("\n");
+
+      iRuntimeStatsDivisor=0;
+
     }
-    osDelay(1);
+
   }
   /* USER CODE END 5 */
 }

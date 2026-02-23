@@ -28,6 +28,23 @@
 #include "ethernetif.h"
 
 /* USER CODE BEGIN 0 */
+#include "usart.h"
+#include "lwrb.h"
+#include "pppos.h"
+#include "pppapi.h"
+
+/* Define this buffer as much as you want to send during 1 second cycle */
+#define TX_RB_BUFF_SIZE (16 * 1024)
+/* Memory is in a fast access zone : DTCM RAM */
+#define __ATTR_USART_TX_DTCM   __attribute__((section(".TxUsart2Dtcm"), aligned(4)))
+/* Simplified design : sleep for time it take to send 2KB @1M baudrate = 21 ms */
+#define WAIT_2KB_IN_MS 21
+
+static void pppConnect(void);
+static u32_t ppp_output_cb(ppp_pcb *pcb, u8_t *data, u32_t len, void *ctx);
+static void UartTxTask(void const * argument);
+static void UartRxCbWrb(uint8_t *rx_buffer, size_t rx_len);
+static void ppp_link_status_cb(ppp_pcb *pcb, int err_code, void *ctx);
 
 /* USER CODE END 0 */
 /* Private function prototypes -----------------------------------------------*/
@@ -36,7 +53,18 @@ static void ethernet_link_status_updated(struct netif *netif);
 void Error_Handler(void);
 
 /* USER CODE BEGIN 1 */
-
+static ppp_pcb *ppp;
+static struct netif pppos_netif;
+/* UART TX task : only context that uses hardware */
+static osThreadId TaskHandle;
+static uint32_t TaskBuffer[1024];
+static osStaticThreadDef_t TaskControlBlock;
+/* Ring buffer instance for TX data */
+static lwrb_t usart_tx_rb;
+/* Ring buffer data array for TX DMA */
+static uint8_t usart_tx_rb_data[TX_RB_BUFF_SIZE] __ATTR_USART_TX_DTCM = {0};
+/* Semaphore to signal to UART task new data */
+static osSemaphoreId TxBuffNew = NULL;   
 /* USER CODE END 1 */
 
 /* Variables Initialization */
@@ -49,6 +77,152 @@ uint8_t NETMASK_ADDRESS[4];
 uint8_t GATEWAY_ADDRESS[4];
 
 /* USER CODE BEGIN 2 */
+
+static void pppConnect(void)
+{
+  // Todo : refactor this into usart.c ?
+  /* Initialize ringbuff for TX */
+  lwrb_init(&usart_tx_rb, usart_tx_rb_data, sizeof(usart_tx_rb_data));
+
+  /* Create semaphore used for informing UartTxTask of new data */
+  osSemaphoreDef(TxBuffNewSem);
+  TxBuffNew = osSemaphoreCreate(osSemaphore(TxBuffNewSem), 1);
+
+  /* Decrease the semaphore's initial count from 1 to 0 */
+  osSemaphoreWait(TxBuffNew, 0);
+
+  ppp = pppapi_pppos_create(&pppos_netif, ppp_output_cb, ppp_link_status_cb, NULL);
+  pppapi_set_default(ppp);
+  /* Uart can now receive and transmit.
+    If done before pppapi_pppos_create, received UART DMA will try to pppos_input
+    into a non created ppp instance */
+  usart_Open(UartRxCbWrb);
+  osThreadStaticDef(UartTxTask, UartTxTask, osPriorityNormal, 0, sizeof(TaskBuffer)/sizeof(&TaskBuffer[0]),
+   TaskBuffer, &TaskControlBlock);
+  TaskHandle = osThreadCreate(osThread(UartTxTask), NULL);
+  pppapi_connect(ppp,0);
+}
+
+/* 
+  Blocks if intermediate TX buffer is full, which means lwip TCPIP core thread will block.
+  There is no risk of losing new RX packets since they're copied to pbuff in RX IRQ context 
+  To never block, define TX_RB_BUFF_SIZE to expected max burst during 1 second cycle
+   */
+static u32_t ppp_output_cb(ppp_pcb *pcb, u8_t *data, u32_t len, void *ctx)
+{
+
+  LWIP_UNUSED_ARG(pcb);
+  LWIP_UNUSED_ARG(ctx);
+  u32_t written;
+  u32_t remaining = len;
+
+  while(remaining)
+  {
+    written = lwrb_write(&usart_tx_rb, data, remaining);
+    osSemaphoreRelease(TxBuffNew);
+    remaining -= written;
+    if(remaining)
+    {
+      /* Sleep for duration needed to send 2KB */
+      osDelay(WAIT_2KB_IN_MS);
+    }
+  }
+  return len;
+}
+
+static void UartTxTask(void const * argument)
+{
+
+  u32_t len;
+
+  while(1)
+  {
+    osSemaphoreWait(TxBuffNew, osWaitForever);
+    while((len = lwrb_get_linear_block_read_length(&usart_tx_rb)) > 0)
+    {
+      /* There is data in ring buffer */
+      usart_Send(lwrb_get_linear_block_read_address(&usart_tx_rb), len);
+      /* move read buffer */
+      lwrb_skip(&usart_tx_rb, len);
+    }
+  }
+}
+
+static void UartRxCbWrb(uint8_t *rx_buffer, size_t rx_len)
+{
+  /* Called in IRQ context. Feed UART rx bytes into ppp */
+  pppos_input(ppp, rx_buffer, rx_len);
+}
+
+
+static void ppp_link_status_cb(ppp_pcb *pcb, int err_code, void *ctx)
+{
+    struct netif *pppif = ppp_netif(pcb);
+    LWIP_UNUSED_ARG(ctx);
+
+    switch(err_code)
+    {
+      case PPPERR_NONE:               /* No error. */
+      {
+        printf("ppp_link_status_cb: PPPERR_NONE\n\r");
+        printf("   our_ip4addr = %s\n\r", ip4addr_ntoa(netif_ip4_addr(pppif)));
+        printf("   his_ipaddr  = %s\n\r", ip4addr_ntoa(netif_ip4_gw(pppif)));
+        printf("   netmask     = %s\n\r", ip4addr_ntoa(netif_ip4_netmask(pppif)));
+      }
+      break;
+
+      case PPPERR_PARAM:             /* Invalid parameter. */
+          printf("ppp_link_status_cb: PPPERR_PARAM\n");
+          break;
+
+      case PPPERR_OPEN:              /* Unable to open PPP session. */
+          printf("ppp_link_status_cb: PPPERR_OPEN\n");
+          break;
+
+      case PPPERR_DEVICE:            /* Invalid I/O device for PPP. */
+          printf("ppp_link_status_cb: PPPERR_DEVICE\n");
+          break;
+
+      case PPPERR_ALLOC:             /* Unable to allocate resources. */
+          printf("ppp_link_status_cb: PPPERR_ALLOC\n");
+          break;
+
+      case PPPERR_USER:              /* User interrupt. */
+          printf("ppp_link_status_cb: PPPERR_USER\n");
+          break;
+
+      case PPPERR_CONNECT:           /* Connection lost. */
+          printf("ppp_link_status_cb: PPPERR_CONNECT\n");
+          break;
+
+      case PPPERR_AUTHFAIL:          /* Failed authentication challenge. */
+          printf("ppp_link_status_cb: PPPERR_AUTHFAIL\n");
+          break;
+
+      case PPPERR_PROTOCOL:          /* Failed to meet protocol. */
+          printf("ppp_link_status_cb: PPPERR_PROTOCOL\n");
+          break;
+
+      case PPPERR_PEERDEAD:          /* Connection timeout. */
+          printf("ppp_link_status_cb: PPPERR_PEERDEAD\n");
+          break;
+
+      case PPPERR_IDLETIMEOUT:       /* Idle Timeout. */
+          printf("ppp_link_status_cb: PPPERR_IDLETIMEOUT\n");
+          break;
+
+      case PPPERR_CONNECTTIME:       /* PPPERR_CONNECTTIME. */
+          printf("ppp_link_status_cb: PPPERR_CONNECTTIME\n");
+          break;
+
+      case PPPERR_LOOPBACK:          /* Connection timeout. */
+          printf("ppp_link_status_cb: PPPERR_LOOPBACK\n");
+          break;
+      default:
+          printf("ppp_link_status_cb: unknown errCode %d\n", err_code);
+          break;
+    }
+}
 
 /* USER CODE END 2 */
 
@@ -101,7 +275,7 @@ void MX_LWIP_Init(void)
 /* USER CODE END H7_OS_THREAD_DEF_CREATE_CMSIS_RTOS_V1 */
 
 /* USER CODE BEGIN 3 */
-
+  pppConnect();
 /* USER CODE END 3 */
 }
 

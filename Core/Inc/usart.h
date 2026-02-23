@@ -16,11 +16,12 @@
   - Executes in UART/RX_DMA ISR context : so processing should be minimal */
 typedef void (*Uart2RxCallback_t)(uint8_t *rx_buffer, size_t rx_len);
 
-
+/* Called before Uart hardware is configured */
+void usart_preInit(void);
 void usart_Open(Uart2RxCallback_t rxCallback);
 /* Blocking send if UART is busy. 
 	Should only be used from one context.
-	Not thread safe if multiple threads can call it.*/
+	!! Not thread safe !! */
 void usart_Send(uint8_t* bArray, uint32_t size_bArray);
 
 #endif /* _USART_ */

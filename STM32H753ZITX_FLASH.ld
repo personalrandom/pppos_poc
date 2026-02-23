@@ -193,6 +193,14 @@ SECTIONS
       KEEP(*(.RxUsart2Dtcm))
       . = ALIGN(4);
   } > DTCMRAM
+
+  /* USART TX buffer in DTCM RAM */
+  .TxUsart2Dtcm (NOLOAD) :
+  {
+      . = ALIGN(4);
+      KEEP(*(.TxUsart2Dtcm))
+      . = ALIGN(4);
+  } > DTCMRAM
   
   /* Remove information from the standard libraries */
   /DISCARD/ :

@@ -1,5 +1,6 @@
 #include "usart.h"
 #include <stdio.h>
+#include "cmsis_os.h"
 
 #define ARRAY_LEN(x)            (sizeof(x) / sizeof((x)[0]))
 #define BUF_MIN(x, y)                   ((x) < (y) ? (x) : (y))
@@ -29,14 +30,20 @@ static volatile uint8_t UsartTxDmaBuff[USART_TX_DMA_BUFF] __ATTR_USART_TX_DMA = 
 static uint8_t UsartRxBuff[USART_RX_BUFF] __ATTR_USART_RX_DTCM = {0};
 /* Tracks DMA received bytes position */
 static uint16_t old_pos = 0;
-/* UART TX DMA ready state : SET = Ready, RESET = Not ready.*/
-static volatile ITStatus UsartTxReady = RESET;
+/* Semaphore to signal UART is ready to Transmit */
+static osSemaphoreId UsartTxReady = NULL;   
 /* Uart RX buffer consumer callback to be defined by consumer app */
 static Uart2RxCallback_t g_rxCallback = NULL;
 
 static uint16_t usart_Recv(uint8_t* bArray, uint32_t ndtr);
 static volatile void *fastmemcpy(volatile void *dst0, const volatile void *src0, size_t len0);
 
+void usart_preInit(void)
+{
+  /* Init operations. Called before UART hardware is configured */
+  osSemaphoreDef(UsartTxSem);
+  UsartTxReady = osSemaphoreCreate(osSemaphore(UsartTxSem), 1);
+}
 
 void usart_Open(Uart2RxCallback_t rxCallback)
 {
@@ -67,7 +74,6 @@ void usart_Open(Uart2RxCallback_t rxCallback)
     Error_Handler();
   }
   old_pos = 0;
-  UsartTxReady = SET;
   if (HAL_OK != HAL_UARTEx_ReceiveToIdle_DMA(
     &huart2, (uint8_t *)UsartRxDmaBuff, ARRAY_LEN(UsartRxDmaBuff)))
   {
@@ -85,13 +91,8 @@ void usart_Send(uint8_t* bArray, uint32_t size_bArray)
   {
       send_size = BUF_MIN(remaining, ARRAY_LEN(UsartTxDmaBuff));
       fastmemcpy(UsartTxDmaBuff, &bArray[size_bArray - remaining], send_size);
-      /* Wait for the end of current transfer */  
-      while (UsartTxReady != SET)
-      {
-      }
-      __DMB();
-      UsartTxReady = RESET;
-      __DSB();
+      /* Wait for the end of current transfer */
+      osSemaphoreWait(UsartTxReady, osWaitForever);
       if(HAL_UART_Transmit_DMA(&huart2, (uint8_t*)UsartTxDmaBuff, send_size)!= HAL_OK)
       {
           Error_Handler();
@@ -192,7 +193,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle)
 {
   /* Transfer complete : UART TX DMA is ready for next transfer */
-  UsartTxReady = SET;
+  osSemaphoreRelease(UsartTxReady);
 }
 
 /**
