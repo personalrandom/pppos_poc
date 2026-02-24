@@ -109,6 +109,12 @@
 #define PPP_SUPPORT 1
 /*----- Default Value for PPP_INPROC_IRQ_SAFE: 0 ---*/
 #define PPP_INPROC_IRQ_SAFE 1
+/*----- Default Value for PPP_SERVER: 0 ---*/
+#define PPP_SERVER 1
+/*----- Default Value for PPP_OUR_NAME: LwIP ---*/
+#define PPP_OUR_NAME lwIP
+/*----- Default Value for VJ_SUPPORT: 1 ---*/
+#define VJ_SUPPORT 0
 /*----- Default Value for LWIP_PERF: 0 ---*/
 #define LWIP_PERF 1
 /*----- Default Value for LWIP_STATS: 0 ---*/
@@ -127,6 +133,9 @@
 #define LWIP_STATS_DISPLAY 1
 #define IP_REASS_MAX_PBUFS 30
 
+// #define LCP_ECHOINTERVAL            0      // disable echo
+// #define LCP_MAX_CONFIGURE           999
+// #define IPCP_MAX_CONFIGURE          999
 /* USER CODE END 1 */
 
 #ifdef __cplusplus

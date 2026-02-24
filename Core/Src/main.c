@@ -399,71 +399,90 @@ static char acRuntimeStats[256];
 static int iRuntimeStatsDivisor;
 osThreadId echo_appHandle;
 #define RECV_BUF_SIZE 16192
-char recv_buf[RECV_BUF_SIZE];
+#define SEND_SIZE 11192
+char buf[RECV_BUF_SIZE];
+#define SERVER_IP   "192.168.200.2"
+extern osSemaphoreId pppconnected;
+
 
 void echo_application_thread(void const * argument)
 {
   /* USER CODE BEGIN echo_application_thread */
   /* Infinite loop */
   int sock;
+  int tx_len = SEND_SIZE;
   u16_t echo_port = 7;
-  struct sockaddr_in client_addr;
-  socklen_t addr_len;
-  struct sockaddr_in address;
+  socklen_t from_len;
+  struct sockaddr_in local_addr, dest_addr, from_addr;
 
 
-  printf("Starting echo server ...\n\r");
+  printf("Starting echo client ...\n\r");
 
-  memset(&address, 0, sizeof(address));
+  memset(&local_addr, 0, sizeof(local_addr));
 
+  /* Create UDP socket */
   if ((sock = lwip_socket(AF_INET, SOCK_DGRAM, 0)) < 0)
   {
     printf("Socket creation failed\n\r");
     return;
   }
 
-  address.sin_family = AF_INET;
-  address.sin_port = htons(echo_port);
-  address.sin_addr.s_addr = INADDR_ANY;
+  /* Bind to local port (required to receive reply) */
+  local_addr.sin_family = AF_INET;
+  local_addr.sin_port = htons(echo_port); // same port
+  local_addr.sin_addr.s_addr = INADDR_ANY;
 
-  if (lwip_bind(sock, (struct sockaddr *)&address, sizeof (address)) < 0)
+  if (lwip_bind(sock, (struct sockaddr *)&local_addr, sizeof (local_addr)) < 0)
   {        
     printf("Bind failed\n\r");
     return;
   }
 
-  addr_len = sizeof(client_addr);
+  // Destination address
+  memset(&dest_addr, 0, sizeof(dest_addr));
+  dest_addr.sin_family = AF_INET;
+  dest_addr.sin_port = htons(echo_port);
+  dest_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+  printf("UDP Echo client started on port %d\n\r", echo_port);
 
-  printf("UDP Echo server started on port %d\n\r", echo_port);
+  osSemaphoreWait(pppconnected, osWaitForever);
+  printf("UDP client can now start sending \n\r");
 
   while (1)
   {
+    /* Fill buffer to send */
+    for (int i = 0; i < tx_len; i++)
+    {
+      buf[i] = i;
+    }
+    if (sendto(sock, buf, tx_len, 0,
+               (struct sockaddr *)&dest_addr,
+               sizeof(dest_addr)) < 0)
+    {
+        printf("Send failed\n");
+        close(sock);
+        return;
+    }
+
+    printf("Sent %d Bytes\n", tx_len);
+
+    // Wait for reply
     int len = recvfrom(sock,
-                       recv_buf,
-                       RECV_BUF_SIZE,
+                       buf,
+                       sizeof(buf) - 1,
                        0,
-                       (struct sockaddr *)&client_addr,
-                       &addr_len);
+                       (struct sockaddr *)&from_addr,
+                       &from_len);
 
     for (int i = 0; i < len; i++)
     {
-      if(recv_buf[i] != (i % 256))
+      if(buf[i] != (i % 256))
       {
         Error_Handler();
       }
     }
-    printf("Received and verified %d Bytes\n", len);
-    if (len > 0)
-    {
-      /* Echo back the received data */
-      sendto(sock,
-             recv_buf,
-             len,
-             0,
-             (struct sockaddr *)&client_addr,
-             addr_len);
-    printf("Sent back all data %d Bytes\n", len);
-    }
+    printf("Received back and verified %d Bytes\n", len);
+
   }
 }
 

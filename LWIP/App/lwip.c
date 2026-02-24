@@ -33,6 +33,7 @@
 #include "pppos.h"
 #include "pppapi.h"
 
+
 /* Define this buffer as much as you want to send during 1 second cycle */
 #define TX_RB_BUFF_SIZE (16 * 1024)
 /* Memory is in a fast access zone : DTCM RAM */
@@ -65,6 +66,9 @@ static lwrb_t usart_tx_rb;
 static uint8_t usart_tx_rb_data[TX_RB_BUFF_SIZE] __ATTR_USART_TX_DTCM = {0};
 /* Semaphore to signal to UART task new data */
 static osSemaphoreId TxBuffNew = NULL;   
+
+/* signal that connection is established */
+osSemaphoreId pppconnected = NULL;
 /* USER CODE END 1 */
 
 /* Variables Initialization */
@@ -88,11 +92,24 @@ static void pppConnect(void)
   osSemaphoreDef(TxBuffNewSem);
   TxBuffNew = osSemaphoreCreate(osSemaphore(TxBuffNewSem), 1);
 
+  osSemaphoreDef(pppconnectedSem);
+  pppconnected = osSemaphoreCreate(osSemaphore(pppconnectedSem), 1);
+
   /* Decrease the semaphore's initial count from 1 to 0 */
   osSemaphoreWait(TxBuffNew, 0);
+   osSemaphoreWait(pppconnected, 0);
 
   ppp = pppapi_pppos_create(&pppos_netif, ppp_output_cb, ppp_link_status_cb, NULL);
   pppapi_set_default(ppp);
+
+  ip4_addr_t our_ip, his_ip;
+
+  IP4_ADDR(&our_ip,  192,168,200,1);
+  IP4_ADDR(&his_ip,  192,168,200,2);
+  ppp_set_ipcp_ouraddr(ppp, &our_ip);
+  ppp_set_ipcp_hisaddr(ppp, &his_ip);
+  ppp_set_silent(ppp, 1);
+  // ppp_set_auth_required(ppp, 0);
   /* Uart can now receive and transmit.
     If done before pppapi_pppos_create, received UART DMA will try to pppos_input
     into a non created ppp instance */
@@ -100,6 +117,7 @@ static void pppConnect(void)
   osThreadStaticDef(UartTxTask, UartTxTask, osPriorityNormal, 0, sizeof(TaskBuffer)/sizeof(&TaskBuffer[0]),
    TaskBuffer, &TaskControlBlock);
   TaskHandle = osThreadCreate(osThread(UartTxTask), NULL);
+
   pppapi_connect(ppp,0);
 }
 
@@ -168,6 +186,7 @@ static void ppp_link_status_cb(ppp_pcb *pcb, int err_code, void *ctx)
         printf("   our_ip4addr = %s\n\r", ip4addr_ntoa(netif_ip4_addr(pppif)));
         printf("   his_ipaddr  = %s\n\r", ip4addr_ntoa(netif_ip4_gw(pppif)));
         printf("   netmask     = %s\n\r", ip4addr_ntoa(netif_ip4_netmask(pppif)));
+        osSemaphoreRelease(pppconnected);
       }
       break;
 
