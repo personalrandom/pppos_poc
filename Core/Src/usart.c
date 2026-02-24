@@ -89,10 +89,10 @@ void usart_Send(uint8_t* bArray, uint32_t size_bArray)
 
   while(remaining)
   {
-      send_size = BUF_MIN(remaining, ARRAY_LEN(UsartTxDmaBuff));
-      fastmemcpy(UsartTxDmaBuff, &bArray[size_bArray - remaining], send_size);
       /* Wait for the end of current transfer */
       osSemaphoreWait(UsartTxReady, osWaitForever);
+      send_size = BUF_MIN(remaining, ARRAY_LEN(UsartTxDmaBuff));
+      fastmemcpy(UsartTxDmaBuff, &bArray[size_bArray - remaining], send_size);
       if(HAL_UART_Transmit_DMA(&huart2, (uint8_t*)UsartTxDmaBuff, send_size)!= HAL_OK)
       {
           Error_Handler();

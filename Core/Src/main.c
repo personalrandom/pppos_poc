@@ -496,7 +496,7 @@ void StartDefaultTask(void const * argument)
     {
       vTaskGetRunTimeStats(acRuntimeStats);
       printf("%s\n", acRuntimeStats);
-      stats_display();
+      // stats_display();
       iRuntimeStatsDivisor=0;
 
     }
