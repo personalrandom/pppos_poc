@@ -395,21 +395,37 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+#define RECV_BUF_SIZE 16192
+#define ECHO_PORT_1 7
+#define ECHO_PORT_2 8
+
+typedef struct {
+    u16_t echo_port;
+    char *recv_buf;
+} TaskParams;
+
 static char acRuntimeStats[256];
 static int iRuntimeStatsDivisor;
-osThreadId echo_appHandle;
-#define RECV_BUF_SIZE 16192
-char recv_buf[RECV_BUF_SIZE];
+static osThreadId echo_appHandle_1;
+static osThreadId echo_appHandle_2;
+static char recv_buf_1[RECV_BUF_SIZE];
+static char recv_buf_2[RECV_BUF_SIZE];
+static TaskParams params_1 = {ECHO_PORT_1, &recv_buf_1[0]};
+static TaskParams params_2 = {ECHO_PORT_2, &recv_buf_2[0]};
+
+
 
 void echo_application_thread(void const * argument)
 {
   /* USER CODE BEGIN echo_application_thread */
   /* Infinite loop */
   int sock;
-  u16_t echo_port = 7;
+  u16_t echo_port = ((TaskParams *)argument)->echo_port;
+  char *recv_buf = ((TaskParams *)argument)->recv_buf;
   struct sockaddr_in client_addr;
   socklen_t addr_len;
   struct sockaddr_in address;
+  uint32_t run = 1;
 
 
   printf("Starting echo server ...\n\r");
@@ -445,14 +461,14 @@ void echo_application_thread(void const * argument)
                        (struct sockaddr *)&client_addr,
                        &addr_len);
 
-    for (int i = 0; i < len; i++)
-    {
-      if(recv_buf[i] != (i % 256))
-      {
-        Error_Handler();
-      }
-    }
-    printf("Received and verified %d Bytes\n", len);
+    // for (int i = 0; i < len; i++)
+    // {
+    //   if(recv_buf[i] != (i % 256))
+    //   {
+    //     Error_Handler();
+    //   }
+    // }
+    // printf("Server %d : Received and verified %d Bytes\n", echo_port, len);
     if (len > 0)
     {
       /* Echo back the received data */
@@ -462,7 +478,12 @@ void echo_application_thread(void const * argument)
              0,
              (struct sockaddr *)&client_addr,
              addr_len);
-    printf("Sent back all data %d Bytes\n", len);
+      // printf("Server %d : Run #%d Sent back all data %d Bytes\n", echo_port, run, len);
+    }
+    run += 1;
+    if ((run % 1000) == 0)
+    {
+      printf("Server %d : Run #%d Sent back all data %d Bytes\n", echo_port, run, len);
     }
   }
 }
@@ -483,8 +504,10 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
 
   /* definition and creation of echo_app */
-  osThreadDef(echo_app, echo_application_thread, osPriorityNormal, 0, 512);
-  echo_appHandle = osThreadCreate(osThread(echo_app), NULL);
+  osThreadDef(echo_app, echo_application_thread, osPriorityNormal, 0, 256);
+  osThreadDef(echo_app2, echo_application_thread, osPriorityNormal, 0, 256);
+  echo_appHandle_1 = osThreadCreate(osThread(echo_app), &params_1);
+  echo_appHandle_2 = osThreadCreate(osThread(echo_app2), &params_2);
 
   /* Infinite loop */
   for(;;)
