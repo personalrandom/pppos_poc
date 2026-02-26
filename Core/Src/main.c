@@ -461,14 +461,6 @@ void echo_application_thread(void const * argument)
                        (struct sockaddr *)&client_addr,
                        &addr_len);
 
-    // for (int i = 0; i < len; i++)
-    // {
-    //   if(recv_buf[i] != (i % 256))
-    //   {
-    //     Error_Handler();
-    //   }
-    // }
-    // printf("Server %d : Received and verified %d Bytes\n", echo_port, len);
     if (len > 0)
     {
       /* Echo back the received data */
@@ -478,12 +470,11 @@ void echo_application_thread(void const * argument)
              0,
              (struct sockaddr *)&client_addr,
              addr_len);
-      // printf("Server %d : Run #%d Sent back all data %d Bytes\n", echo_port, run, len);
     }
     run += 1;
-    if ((run % 1000) == 0)
+    if ((run % 100) == 0)
     {
-      printf("Server %d : Run #%d Sent back all data %d Bytes\n", echo_port, run, len);
+      printf("Server %d : Run %ld Sent back all data %d Bytes\n", echo_port, run, len);
     }
   }
 }
@@ -504,8 +495,8 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
 
   /* definition and creation of echo_app */
-  osThreadDef(echo_app, echo_application_thread, osPriorityNormal, 0, 256);
-  osThreadDef(echo_app2, echo_application_thread, osPriorityNormal, 0, 256);
+  osThreadDef(echo_app, echo_application_thread, osPriorityNormal, 0, 512);
+  osThreadDef(echo_app2, echo_application_thread, osPriorityNormal, 0, 512);
   echo_appHandle_1 = osThreadCreate(osThread(echo_app), &params_1);
   echo_appHandle_2 = osThreadCreate(osThread(echo_app2), &params_2);
 
@@ -518,7 +509,7 @@ void StartDefaultTask(void const * argument)
     // if (0)
     {
       vTaskGetRunTimeStats(acRuntimeStats);
-      printf("%s\n", acRuntimeStats);
+      // printf("%s\n", acRuntimeStats);
       // stats_display();
       iRuntimeStatsDivisor=0;
 
