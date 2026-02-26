@@ -132,6 +132,7 @@
 #define MEMP_STATS 1
 #define LWIP_STATS_DISPLAY 1
 #define IP_REASS_MAX_PBUFS 30
+#define LWIP_SO_RCVTIMEO 1
 
 // #define LCP_ECHOINTERVAL            0      // disable echo
 // #define LCP_MAX_CONFIGURE           999

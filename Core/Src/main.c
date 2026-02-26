@@ -26,6 +26,8 @@
 #include "usart.h"
 #include "lwrb.h"
 #include "lwip/sockets.h"
+#include "lwip/errno.h"
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -399,22 +401,24 @@ static char acRuntimeStats[256];
 static int iRuntimeStatsDivisor;
 osThreadId echo_appHandle;
 #define RECV_BUF_SIZE 16192
-#define SEND_SIZE 11192
+#define SEND_SIZE 10000
+#define BUFF_SIZE_MIN   32
+#define BUFF_SIZE_MAX   10000
 char buf[RECV_BUF_SIZE];
 #define SERVER_IP   "192.168.200.2"
 extern osSemaphoreId pppconnected;
 
+extern volatile uint32_t total_uart_tx;
 
 void echo_application_thread(void const * argument)
 {
   /* USER CODE BEGIN echo_application_thread */
   /* Infinite loop */
   int sock;
-  int tx_len = SEND_SIZE;
   u16_t echo_port = 7;
   socklen_t from_len;
   struct sockaddr_in local_addr, dest_addr, from_addr;
-
+  uint32_t run = 1;
 
   printf("Starting echo client ...\n\r");
 
@@ -426,6 +430,12 @@ void echo_application_thread(void const * argument)
     printf("Socket creation failed\n\r");
     return;
   }
+
+  /* Set timeout at 1 second */
+  struct timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
   /* Bind to local port (required to receive reply) */
   local_addr.sin_family = AF_INET;
@@ -447,13 +457,20 @@ void echo_application_thread(void const * argument)
 
   osSemaphoreWait(pppconnected, osWaitForever);
   printf("UDP client can now start sending \n\r");
+  total_uart_tx = 0;
+  osDelay(1000);
+
+  srand(HAL_GetTick());   // seed once
 
   while (1)
   {
-    /* Fill buffer to send */
+    /* Random packet length */
+    uint32_t tx_len = BUFF_SIZE_MIN +
+        (rand() % (BUFF_SIZE_MAX - BUFF_SIZE_MIN + 1));
+    /* Fill buffer with random bytes */
     for (int i = 0; i < tx_len; i++)
     {
-      buf[i] = i;
+      buf[i] = rand() & 0xFF;
     }
     if (sendto(sock, buf, tx_len, 0,
                (struct sockaddr *)&dest_addr,
@@ -464,8 +481,6 @@ void echo_application_thread(void const * argument)
         return;
     }
 
-    printf("Sent %d Bytes\n", tx_len);
-
     // Wait for reply
     int len = recvfrom(sock,
                        buf,
@@ -474,14 +489,15 @@ void echo_application_thread(void const * argument)
                        (struct sockaddr *)&from_addr,
                        &from_len);
 
-    for (int i = 0; i < len; i++)
+
+    if(len < 0)
+      printf("Client %d : Run %ld timeout\n", echo_port, run);
+
+    run += 1;
+    if ((run % 100) == 0)
     {
-      if(buf[i] != (i % 256))
-      {
-        Error_Handler();
-      }
+      printf("Client %d : Run %ld Received back and verified %d Bytes\n", echo_port, run, len);
     }
-    printf("Received back and verified %d Bytes\n", len);
 
   }
 }
@@ -513,9 +529,10 @@ void StartDefaultTask(void const * argument)
     if (++iRuntimeStatsDivisor > 6)
     // if (0)
     {
-      vTaskGetRunTimeStats(acRuntimeStats);
-      printf("%s\n", acRuntimeStats);
-      stats_display();
+      // vTaskGetRunTimeStats(acRuntimeStats);
+      // printf("%s\n", acRuntimeStats);
+      // stats_display();
+      // printf("total uart tx %d\n", total_uart_tx);
       iRuntimeStatsDivisor=0;
 
     }
